@@ -1,10 +1,13 @@
 <script>
   import Fa from "svelte-fa";
+  import Line from "svelte-chartjs/src/Line.svelte";
   import {
     faChartLine,
     faChartPie,
     faChartGantt,
     faChartSimple,
+    faUserClock,
+    faClockFour,
   } from "@fortawesome/free-solid-svg-icons";
   import { collection, doc, orderBy, query, where } from "firebase/firestore";
   import { collectionData, docData } from "rxfire/firestore";
@@ -12,6 +15,7 @@
   import { auth, firestore } from "../firebase";
   import { startWith } from "rxjs/operators";
   import { onMount } from "svelte";
+  import Footer from "./Footer.svelte";
 
   export let params;
 
@@ -21,14 +25,6 @@
 
   const tagRef = doc(firestore, `tags`, id);
 
-  /*  
-  {
-    "name": "Tag 1",
-    "slug": "tag-1",
-    "uid": "123456789",
-    "created": "2020-01-01T00:00:00.000Z",
-  }
-  */
   const tag = docData(tagRef, { idField: "id" });
 
   const invokesRef = query(
@@ -42,15 +38,40 @@
     orderBy("timestamp", "desc")
   );
 
+  let labels;
+
   let uses,
     weeklyUses,
     users,
     channels,
+    usageChart,
     topUsers = [],
     topChannels = [],
     latest = [],
-    latestArgs = false;
-
+    latestArgs = false,
+    dropDown = true,
+    selectedData = null,
+    selectOptions = ["Hourly", "Weekly"],
+    selectedGraph = selectOptions[0],
+    hourlyInvokes = {},
+    dailyInvokes = {};
+  $: {
+    if (selectedGraph == "Hourly") {
+      selectedData = hourlyInvokes;
+      labels = Object.keys(hourlyInvokes);
+    } else {
+      selectedData = dailyInvokes;
+      labels = [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+      ].slice(0, Object.keys(dailyInvokes).length);
+    }
+  }
   const invokes = collectionData(invokesRef, { idField: "id" }).pipe(
     startWith([])
   );
@@ -59,6 +80,45 @@
     uses = invokes.length;
     latest = invokes.slice(0, 5);
     latestArgs = latest.find((i) => i.args) !== undefined;
+    for (const x of invokes) {
+      console.log(
+        new Date(x.timestamp).toLocaleString("en-un", { weekday: "long" })
+      );
+    }
+
+    dailyInvokes = invokes
+      .map((i) => new Date(i.timestamp).getDay())
+      .reduce((acc, day) => {
+        if (!acc[day]) {
+          acc[day] = 0;
+        }
+        acc[day]++;
+        return acc;
+      }, {});
+    for (
+      let i = 0;
+      i < Math.max(...Object.keys(dailyInvokes).map(parseInt));
+      i++
+    ) {
+      if (!dailyInvokes[i]) {
+        dailyInvokes[i] = 0;
+      }
+    }
+
+    console.log(dailyInvokes, Object.values(dailyInvokes));
+    hourlyInvokes = invokes
+      .filter((i) => i.timestamp > Date.now() - 1000 * 60 * 60 * 24)
+      .reduce((acc, i) => {
+        console.log(new Date(i.timestamp).toTimeString());
+        let hour = "" + new Date(i.timestamp).getHours();
+        console.log(hour);
+        if (!acc[hour]) {
+          acc[hour] = 0;
+        }
+        acc[hour]++;
+        return acc;
+      }, {});
+    selectedData = hourlyInvokes;
     weeklyUses = invokes.filter(
       (i) => i.timestamp >= +new Date(Date.now() - 1000 * 60 * 60 * 24 * 7)
     ).length;
@@ -76,6 +136,7 @@
         name: key,
         id: invokes.find((i) => i.author_name === key).author_id,
         icon: invokes.find((i) => i.author_name === key).author_icon,
+        percent: Math.round((occurrences[key] / uses) * 100),
         count: occurrences[key],
       }))
       .slice(0, 5);
@@ -127,7 +188,7 @@
   }
 
   let current = Date.now();
-  onMount(() => {
+  onMount(async () => {
     setInterval(() => {
       current = Date.now();
     }, 1000);
@@ -259,6 +320,89 @@
               class="relative flex flex-col min-w-0 break-words bg-slate-900 w-full mb-6 shadow-lg rounded"
             >
               <div class="rounded-t mb-0 px-4 py-3 border-0">
+                <button
+                  id="dropdownBottomButton"
+                  on:click={() =>
+                    (selectedGraph = selectOptions.find(
+                      (v) => v != selectedGraph
+                    ))}
+                  class="mr-3 mb-3 md:mb-0 text-white bg-slate-800 font-medium rounded-md text-sm px-4 py-2.5 text-center inline-flex items-center"
+                  type="button"
+                  >{selectedGraph}
+                  <Fa
+                    class="ml-2"
+                    icon={selectedGraph == selectOptions[0]
+                      ? faUserClock
+                      : faClockFour}
+                  /></button
+                >
+                <div
+                  id="dropdownBottom"
+                  hidden={dropDown}
+                  class="z-10 bg-white divide-y fixed divide-gray-100 rounded shadow w-44 dark:bg-gray-700"
+                >
+                  <ul
+                    class="py-1 text-sm text-gray-700 dark:text-gray-200"
+                    aria-labelledby="dropdownBottomButton"
+                  >
+                    {#each selectOptions as option (option)}
+                      {#if option != selectedGraph}
+                        <li>
+                          <button
+                            on:click={() => {
+                              selectedGraph = option;
+                              dropDown = !dropDown;
+                            }}
+                            class="block px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 dark:hover:text-white"
+                            >{option}</button
+                          >
+                        </li>
+                      {/if}
+                    {/each}
+                  </ul>
+                </div>
+                <div id="usage-chart">
+                  <div class="relative w-full px-4 max-w-full flex-grow flex-1">
+                    <div class="h-full">
+                      <Line
+                        data={{
+                          labels,
+                          datasets: [
+                            {
+                              data: Object.values(selectedData),
+                              fill: true,
+                              label: "uses",
+                              lineTension: 0.3,
+                              backgroundColor: "rgba(252, 163, 17, 0.1)",
+                              borderColor: "rgb(252, 163, 17)",
+                              pointBackgroundColor: "rgb(252 163 17)",
+                              pointBorderWidth: 5,
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          legend: {
+                            display: false,
+                          },
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="flex flex-wrap mt-4">
+          <div class="w-full xl:w-8/12 mb-12 xl:mb-0 px-4">
+            <div
+              class="relative flex flex-col min-w-0 break-words bg-slate-900 w-full mb-6 shadow-lg rounded"
+            >
+              <div class="rounded-t mb-0 px-4 py-3 border-0">
                 <div class="flex flex-wrap items-center">
                   <div class="relative w-full px-4 max-w-full flex-grow flex-1">
                     <h3 class="font-semibold text-base text-blueGray-700">
@@ -280,11 +424,15 @@
                       <th
                         class="px-6 bg-blueGray-50 text-blueGray-500 align-middle border border-solid border-blueGray-100 py-3 text-xs uppercase border-l-0 border-r-0 whitespace-nowrap font-semibold text-left"
                         >Uses</th
+                      >
+                      <th
+                        class="px-6 bg-blueGray-50 text-blueGray-500 align-middle border border-solid border-blueGray-100 py-3 text-xs uppercase border-l-0 border-r-0 whitespace-nowrap font-semibold text-left"
+                        >%</th
                       ></tr
                     ></thead
                   >
                   <tbody>
-                    {#each topUsers as { name, icon, count }}
+                    {#each topUsers as { name, icon, count, percent }}
                       <tr>
                         <th
                           class="flex border-t-0 px-6 align-middle border-l-0 border-r-0 text-xs whitespace-nowrap p-3 text-left"
@@ -306,7 +454,22 @@
                         <td
                           class="border-t-0 px-6 align-middle border-l-0 border-r-0 text-xs whitespace-nowrap"
                           >{count}</td
-                        ></tr
+                        ><td
+                          class="border-t-0 px-6 align-middle border-l-0 border-r-0 text-xs whitespace-nowrap p-4"
+                          ><div class="flex items-center">
+                            <span class="mr-2">{percent}%</span>
+                            <div class="relative w-full">
+                              <div
+                                class="overflow-hidden h-2 text-xs flex rounded bg-indigo-300"
+                              >
+                                <div
+                                  style="width: {percent}%;"
+                                  class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-indigo-500"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </td></tr
                       >
                     {/each}
                   </tbody>
@@ -380,9 +543,9 @@
               </div>
             </div>
           </div>
-          <div class="w-full xl:w-8/12 mb-12 xl:mb-0 px-4">
+          <div class="w-full xl:w-8/12 xl:mb-0 px-4">
             <div
-              class="hover:lg:-skew-y-1 hover:lg:skew-x-1 transform-all duration-300 ease-in-out relative flex flex-col min-w-0 break-words bg-slate-900 w-full mb-6 shadow-lg rounded"
+              class="transform-all duration-300 ease-in-out relative flex flex-col min-w-0 break-words bg-slate-900 w-full mb-6 shadow-lg rounded"
             >
               <div class="rounded-t mb-0 px-4 py-3 border-0">
                 <div class="flex flex-wrap items-center">
@@ -404,7 +567,7 @@
                         >Time</th
                       >
                       <th
-                        class="px-6 bg-blueGray-50 text-blueGray-500 align-middle border border-solid border-blueGray-100 py-3 text-xs uppercase border-l-0 border-r-0 whitespace-nowrap font-semibold text-left"
+                        class="px-6 hidden lg:visible bg-blueGray-50 text-blueGray-500 align-middle border border-solid border-blueGray-100 py-3 text-xs uppercase border-l-0 border-r-0 whitespace-nowrap font-semibold text-left"
                         >Server</th
                       >
                       <th
@@ -431,7 +594,7 @@
                           >{timeDifference(current, timestamp)}</th
                         >
                         <th
-                          class="border-t-0 px-6 align-middle border-l-0 border-r-0 text-xs whitespace-nowrap p-4 text-left"
+                          class="border-t-0 hidden lg:visible px-6 align-middle border-l-0 border-r-0 text-xs whitespace-nowrap p-4 text-left"
                           >{guild_name}</th
                         >
                         <td
@@ -470,60 +633,7 @@
           </div>
         </div>
       </div>
-      <footer class="block py-4">
-        <div class="container mx-auto px-4">
-          <hr class="mb-4 border-b-1 border-blueGray-200" />
-          <div
-            class="flex flex-wrap items-center md:justify-between justify-center"
-          >
-            <div class="w-full md:w-4/12 px-4">
-              <div
-                class="text-sm text-blueGray-500 font-semibold py-1 text-center md:text-left"
-              >
-                Copyright © 2022 <a
-                  href="https://www.creative-tim.com?ref=ns-footer-admin"
-                  class="text-blueGray-500 hover:text-blueGray-700 text-sm font-semibold py-1"
-                  >Squidtoon99</a
-                >
-              </div>
-            </div>
-            <div class="w-full md:w-8/12 px-4">
-              <ul
-                class="flex flex-wrap list-none md:justify-end justify-center"
-              >
-                <li>
-                  <a
-                    href="https://squid.pink"
-                    class="text-blueGray-600 hover:text-blueGray-800 text-sm font-semibold block py-1 px-3"
-                    >Squidtoon99</a
-                  >
-                </li>
-                <li>
-                  <a
-                    href="https://frisky.dev"
-                    class="text-blueGray-600 hover:text-blueGray-800 text-sm font-semibold block py-1 px-3"
-                    >My Bot</a
-                  >
-                </li>
-                <li>
-                  <a
-                    href="http://squid.pink/posts"
-                    class="text-blueGray-600 hover:text-blueGray-800 text-sm font-semibold block py-1 px-3"
-                    >Blog</a
-                  >
-                </li>
-                <li>
-                  <a
-                    href="https://github.com/Squidtoon99"
-                    class="text-blueGray-600 hover:text-blueGray-800 text-sm font-semibold block py-1 px-3"
-                    >Github</a
-                  >
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </section>
   </section>
 {/if}

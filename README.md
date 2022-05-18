@@ -1,21 +1,8 @@
-# svelte-vite-tailwindcss3-template
+# Tag Analytics 
 
-This is a fork of Svelte's project template to enable usage of Tailwindcss. Refer to https://github.com/sveltejs/template for more info.
+This is a simple tag analytics tool that allows you to see how many times a tag has been used. It's mostly a proof of concept and not meant to be used for anything serious.
 
-To create a new project based on this template using [degit](https://github.com/Rich-Harris/degit):
+If you like this project give it a star! 
 
-```bash
-npx degit lukem121/svelte-vite-tailwind-template svelte-app
-cd svelte-app
-```
-
-_Note that you will need to have [Node.js](https://nodejs.org) installed._
-
-## Get started
-
-Install the dependencies...
-
-```bash
-cd svelte-app
-npm install
-```
+## Special Thanks
+- `Jasvir Singh#1369` for feedback and suggestions

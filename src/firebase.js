@@ -16,7 +16,7 @@ import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
 
-  apiKey: "AIzaSyC4_5DmLkz-28VPMot6W8al3rdAVxMKCKs",
+  apiKey: import.meta.env.VITE_API_KEY,
 
   authDomain: "tag-analytics-2eb35.firebaseapp.com",
 
@@ -40,9 +40,9 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const firestore = getFirestore(app);
 
-if (import.meta.env.MODE == "development") {
-  connectFirestoreEmulator(firestore, 'localhost', 8084);
-}
+// if (import.meta.env.MODE == "development") {
+//   connectFirestoreEmulator(firestore, 'localhost', 8084);
+// }
 
 export const provider = new GoogleAuthProvider();
 export const functions = getFunctions(app);
